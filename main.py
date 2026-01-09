@@ -78,14 +78,21 @@ async def main():
             return
 
         logger.info(f"Fetching news for keywords: {search_keywords}")
+        loop = asyncio.get_running_loop()
         for keyword in search_keywords:
-            news_for_keyword = fetcher.fetch_news(
-                client_id=naver_conf['client_id'],
-                client_secret=naver_conf['client_secret'],
-                query=keyword
+            # Run the synchronous `fetch_news` in a separate thread to avoid blocking
+            news_for_keyword = await loop.run_in_executor(
+                None,  # Use the default thread pool executor
+                fetcher.fetch_news,
+                naver_conf['client_id'],
+                naver_conf['client_secret'],
+                keyword
             )
             if news_for_keyword:
                 all_news_items.extend(news_for_keyword)
+            
+            # Add a delay to avoid hitting API rate limits
+            await asyncio.sleep(0.2)
         
         if not all_news_items:
             logger.info("No news items fetched from Naver API. Exiting.")
