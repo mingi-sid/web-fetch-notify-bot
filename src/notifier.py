@@ -4,6 +4,7 @@ from loguru import logger
 from typing import Dict
 import html
 import asyncio
+from datetime import datetime
 
 
 async def send_notification(
@@ -27,6 +28,17 @@ async def send_notification(
         title = html.unescape(news_item["title"])
         description = html.unescape(news_item["description"])
         link = news_item["link"]
+        pub_date = news_item.get("pubDate")
+
+        # Format the publication date if it exists
+        formatted_date = ""
+        if pub_date:
+            try:
+                # Parse RFC 1123 date string (e.g., "Fri, 09 Jan 2026 07:26:38 +0900")
+                dt_object = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %z')
+                formatted_date = f"{dt_object.year}년 {dt_object.month}월 {dt_object.day}일 {dt_object.hour}시 {dt_object.minute}분"
+            except (ValueError, KeyError) as e:
+                logger.warning(f"Could not parse date '{pub_date}': {e}")
 
         # This is a fallback and might not be perfect if the title was modified.
         if keyword and f"<b>{keyword}</b>" not in title.lower():
@@ -37,10 +49,14 @@ async def send_notification(
                 f"({re.escape(keyword)})", r"<b>\1</b>", title, flags=re.IGNORECASE
             )
 
-        # Format the message using HTML tags.
-        message = (
-            f"<b>{title}</b>\n\n" f"{description}\n\n" f'<a href="{link}">기사 링크</a>'
-        )
+        # Format the message using HTML tags, including the formatted date if available.
+        message_parts = [f"<b>{title}</b>"]
+        if formatted_date:
+            message_parts.append(f"<i>{formatted_date}</i>")
+        message_parts.append(description)
+        message_parts.append(f'<a href="{link}">기사 링크</a>')
+
+        message = "\n\n".join(message_parts)
 
         await bot.send_message(
             chat_id=chat_id,
