@@ -73,9 +73,13 @@
         - "검색할 키워드 2"
       exclude_keywords:
         - "제외할 키워드"
+      exclude_urls:
+        - "example.com"
+        - "another-domain.com/news"
     ```
     - **Naver API**: [네이버 개발자 센터](https://developers.naver.com/)에서 API 이용 신청 후 `client_id`와 `client_secret`을 발급받으세요.
     - **Telegram Bot**: `BotFather`를 통해 봇을 생성하고 `bot_token`을 발급받으세요. `chat_id`는 메시지를 받을 사용자의 ID 또는 채널의 ID입니다.
+    - **Filter**: `keywords`에 원하는 키워드를, `exclude_keywords`에 제외하고 싶은 키워드를, `exclude_urls`에 제외하고 싶은 url을 추가하세요.
 
 ## 사용법
 

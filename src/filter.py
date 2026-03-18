@@ -4,7 +4,8 @@ from loguru import logger
 def filter_news(
     news_items: List[Dict], 
     include_keywords: List[str], 
-    exclude_keywords: List[str]
+    exclude_keywords: List[str],
+    exclude_urls: List[str]
 ) -> List[Dict]:
     """
     Filters a list of news articles based on keywords.
@@ -14,6 +15,7 @@ def filter_news(
         include_keywords: A list of keywords that MUST be present in the title or description.
                           The logic is OR-based; any one of these keywords is a match.
         exclude_keywords: A list of keywords that MUST NOT be present in the title or description.
+        exclude_urls: A list of urls that MUST NOT be present in the link or originallink.
 
     Returns:
         A new list of news items that match the filter criteria.
@@ -55,8 +57,22 @@ def filter_news(
         if not passes_exclude:
             logger.trace(f"Excluding '{item['title']}' due to exclusion keyword.")
             continue # Skip to the next item if exclusion criteria are met
+
+        # 3. Check for exclusion urls (AND logic)
+        # If any exclusion url is found, the item is rejected.
+        passes_exclude_url = True
+        if exclude_urls:
+            link = item.get('link', '').lower()
+            originallink = item.get('originallink', '').lower()
+            if any(url in link for url in exclude_urls) or \
+               any(url in originallink for url in exclude_urls):
+                passes_exclude_url = False
+
+        if not passes_exclude_url:
+            logger.trace(f"Excluding '{item['title']}' due to exclusion url.")
+            continue
             
-        # 3. If both checks pass, add to the list
+        # 4. If both checks pass, add to the list
         filtered_list.append(item)
 
     logger.info(f"Filtered {len(news_items)} items down to {len(filtered_list)} based on keywords.")
@@ -83,7 +99,7 @@ if __name__ == '__main__':
     logger.info(f"Exclude Keywords: {exclude_kws}")
     
     # Run the filter
-    filtered_results = filter_news(mock_news, include_kws, exclude_kws)
+    filtered_results = filter_news(mock_news, include_kws, exclude_kws, [])
     
     # Assertions to verify the logic
     assert len(filtered_results) == 2, f"Expected 2 results, but got {len(filtered_results)}"
@@ -91,12 +107,12 @@ if __name__ == '__main__':
     assert filtered_results[1]['title'] == '속보: 트랜스젠더 인권 보호 시급'
 
     # Test with no include keywords
-    filtered_no_include = filter_news(mock_news, [], exclude_kws)
+    filtered_no_include = filter_news(mock_news, [], exclude_kws, [])
     assert len(filtered_no_include) == 4
     logger.info(f"Filtering with only exclude keywords resulted in {len(filtered_no_include)} items.")
 
     # Test with no exclude keywords
-    filtered_no_exclude = filter_news(mock_news, include_kws, [])
+    filtered_no_exclude = filter_news(mock_news, include_kws, [], [])
     assert len(filtered_no_exclude) == 3
     logger.info(f"Filtering with only include keywords resulted in {len(filtered_no_exclude)} items.")
     
