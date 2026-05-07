@@ -103,7 +103,8 @@ async def main():
             news_items=all_news_items,
             include_keywords=filter_conf.get('keywords', []),
             exclude_keywords=filter_conf.get('exclude_keywords', []),
-            exclude_urls=filter_conf.get('exclude_urls', [])
+            exclude_urls=filter_conf.get('exclude_urls', []),
+            exclude_title_keywords=filter_conf.get('exclude_title_keywords', [])
         )
         
         # 4. Process and send notifications

@@ -2,10 +2,11 @@ from typing import List, Dict
 from loguru import logger
 
 def filter_news(
-    news_items: List[Dict], 
-    include_keywords: List[str], 
+    news_items: List[Dict],
+    include_keywords: List[str],
     exclude_keywords: List[str],
-    exclude_urls: List[str]
+    exclude_urls: List[str],
+    exclude_title_keywords: List[str] = []
 ) -> List[Dict]:
     """
     Filters a list of news articles based on keywords.
@@ -16,6 +17,7 @@ def filter_news(
                           The logic is OR-based; any one of these keywords is a match.
         exclude_keywords: A list of keywords that MUST NOT be present in the title or description.
         exclude_urls: A list of urls that MUST NOT be present in the link or originallink.
+        exclude_title_keywords: A list of keywords that MUST NOT be present in the title only.
 
     Returns:
         A new list of news items that match the filter criteria.
@@ -24,17 +26,18 @@ def filter_news(
         return []
 
     filtered_list = []
-    
+
     # Normalize keywords to lowercase for case-insensitive matching
     include_keywords_lower = [kw.lower() for kw in include_keywords]
     exclude_keywords_lower = [kw.lower() for kw in exclude_keywords]
+    exclude_title_keywords_lower = [kw.lower() for kw in exclude_title_keywords]
 
     for item in news_items:
         # Combine title and description for searching
         title = item.get('title', '').lower()
         description = item.get('description', '').lower()
         content_to_search = f"{title} {description}"
-        
+
         # 1. Check for inclusion criteria (OR logic)
         # If there are inclusion keywords, at least one must be met.
         passes_include = False
@@ -43,7 +46,7 @@ def filter_news(
         else:
             if any(kw in content_to_search for kw in include_keywords_lower):
                 passes_include = True
-        
+
         if not passes_include:
             continue # Skip to the next item if inclusion criteria are not met
 
@@ -53,7 +56,7 @@ def filter_news(
         if exclude_keywords_lower:
             if any(kw in content_to_search for kw in exclude_keywords_lower):
                 passes_exclude = False
-        
+
         if not passes_exclude:
             logger.trace(f"Excluding '{item['title']}' due to exclusion keyword.")
             continue # Skip to the next item if exclusion criteria are met
@@ -71,8 +74,15 @@ def filter_news(
         if not passes_exclude_url:
             logger.trace(f"Excluding '{item['title']}' due to exclusion url.")
             continue
-            
-        # 4. If both checks pass, add to the list
+
+        # 4. Check for exclusion title keywords (title only)
+        # If any exclusion title keyword is found in the title, the item is rejected.
+        if exclude_title_keywords_lower:
+            if any(kw in title for kw in exclude_title_keywords_lower):
+                logger.trace(f"Excluding '{item['title']}' due to exclusion title keyword.")
+                continue
+
+        # 5. If all checks pass, add to the list
         filtered_list.append(item)
 
     logger.info(f"Filtered {len(news_items)} items down to {len(filtered_list)} based on keywords.")
