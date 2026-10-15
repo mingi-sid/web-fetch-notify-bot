@@ -1,0 +1,96 @@
+naver:
+  client_id: "YOUR_NAVER_CLIENT_ID"
+  client_secret: "YOUR_NAVER_CLIENT_SECRET"
+
+telegram:
+  bot_token: "YOUR_TELEGRAM_BOT_TOKEN"
+  chat_id: "YOUR_TELEGRAM_CHAT_ID"
+
+filter:
+  keywords:
+    - "검색할 키워드 1"
+  exclude_keywords: []
+  exclude_urls: []
+  exclude_title_keywords: []
+
+# --- LLM 뉴스 다이제스트 (digest_main.py) ---
+
+llm:
+  provider: "anthropic"            # "anthropic" 또는 "gemini"
+  anthropic:
+    api_key: "YOUR_ANTHROPIC_API_KEY"   # 비워두면 ANTHROPIC_API_KEY 환경변수 사용
+    screening_model: "claude-haiku-4-5"
+    digest_model: "claude-sonnet-5-5"
+  gemini:
+    api_key: "YOUR_GEMINI_API_KEY"      # 비워두면 GEMINI_API_KEY 환경변수 사용
+    screening_model: "YOUR_GEMINI_MODEL"
+    digest_model: "YOUR_GEMINI_MODEL"
+
+digest:
+  # 수집 대상 언론사.
+  #   type: rss        -> url 의 피드를 읽음
+  #   type: html_list  -> urls 페이지에서 href 에 link_pattern 이 포함된 링크를 기사로 수집
+  #   fetch_body: false -> 본문에 접근하지 않고 제목·링크만 전달 (robots.txt 로 AI 봇을 막는 언론사)
+  sources:
+    hani:       {name: "한겨레", type: rss, url: "https://www.hani.co.kr/rss/", fetch_body: false}
+    khan:       {name: "경향신문", type: rss, url: "https://www.khan.co.kr/rss/rssdata/total_news.xml", fetch_body: false}
+    chosun:     {name: "조선일보", type: rss, url: "https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml", fetch_body: false}
+    segye:      {name: "세계일보", type: rss, url: "https://www.segye.com/Articles/RSSList/segye_recent.xml", fetch_body: false}
+    pressian:   {name: "프레시안", type: rss, url: "http://www.pressian.com/api/v3/site/rss/news"}
+    newscham:   {name: "참세상", type: rss, url: "https://newscham.net/feed/"}
+    ohmynews:   {name: "오마이뉴스", type: rss, url: "http://rss.ohmynews.com/rss/ohmynews.xml"}
+    daejonilbo: {name: "대전일보", type: rss, url: "https://www.daejonilbo.com/rss/allArticle.xml"}
+    dtnews24:   {name: "디트뉴스24", type: rss, url: "https://www.dtnews24.com/rss/allArticle.xml"}
+    newstnt:    {name: "뉴스티앤티", type: rss, url: "https://cdn.newstnt.com/rss/gn_rss_allArticle.xml"}
+    chungnam:   {name: "충남일보", type: rss, url: "https://www.chungnamilbo.co.kr/rss/allArticle.xml"}
+    cctoday:    {name: "충청투데이", type: rss, url: "https://www.cctoday.co.kr/rss/allArticle.xml"}
+    tjb:
+      name: "TJB"
+      type: html_list
+      urls: ["https://www.tjb.co.kr/sub0307"]
+      link_pattern: "/sub0307/issue/view/id/"
+    tjmbc:
+      name: "대전MBC"
+      type: html_list
+      urls: ["https://tjmbc.co.kr/NewsDesk", "https://tjmbc.co.kr/NewsToday"]
+      link_pattern: "/NewsArticle/"
+
+  # 브리프: 그날 뉴스를 이미 정리한 뉴스레터. 본문에 접근하지 않는 언론사 기사를 요약할 때 참고 자료로 사용.
+  #   type: url  -> url 템플릿에 날짜를 넣어 조회
+  #   type: rss  -> 피드에서 제목에 title_contains 가 포함된 글을 찾음
+  # 발송일(KST) 것을 먼저 찾고, 없으면 전날 것을 사용. 다이제스트별 briefs 에서 지정.
+  briefs:
+    weirdhat:
+      name: "weirdhat 브리핑"
+      type: url
+      url: "https://weirdhat.net/brief/{date:%Y%m%d}.html"
+    slowletter:
+      name: "슬로우레터"
+      type: rss
+      url: "https://slownews.kr/feed"
+      title_contains: "슬로우레터 {date.month}월{date.day}일"
+
+  # 사전 제외 (LLM 호출 전 적용, 모든 다이제스트 공통). 다이제스트별로 같은 키를 추가할 수도 있음.
+  #   exclude_title_keywords: 제목에 포함되면 제외
+  #   exclude_url_patterns:   링크에 포함되면 제외
+  exclude_title_keywords: []
+  exclude_url_patterns:
+    - "chosun.com/jp/"              # 조선일보 일본어판 (RSS의 약 절반)
+    - "chosun.com/sports/"
+    - "chosun.com/entertainments/"
+    - "hani.co.kr/arti/cartoon/"
+    - "ohmynews.com/NWS_Web/OhmyStar/"
+
+  # 다이제스트마다 '관심사 기사'와 '오늘의 주요 기사' 두 섹션을 각각 별도 메시지로 전송.
+  #   max_articles: 섹션별 최대 기사 수. 기준을 넘는 기사가 적어도 절반(올림)은 채움
+  #   min_score:    섹션 기준 점수 (1-5, 기본 4)
+  digests:
+    - name: "관심 이슈"
+      sources: [hani, khan, chosun, segye, pressian, newscham, ohmynews]
+      interests: "AI, 여성·젠더, 성소수자, 기후, 메가프로젝트 관련 기사를 중점적으로 봅니다"
+      briefs: [weirdhat, slowletter]
+      max_articles: 10
+    - name: "대전·충청"
+      sources: [daejonilbo, dtnews24, newstnt, chungnam, cctoday, tjb, tjmbc]
+      interests: "대전·충청 지역 정치, 도시개발, 노동, 시민사회 관련 기사를 봅니다"
+      max_articles: 10

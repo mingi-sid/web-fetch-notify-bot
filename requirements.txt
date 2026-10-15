@@ -2,3 +2,8 @@ requests
 python-telegram-bot
 PyYAML
 loguru
+anthropic
+google-genai
+feedparser
+beautifulsoup4
+trafilatura

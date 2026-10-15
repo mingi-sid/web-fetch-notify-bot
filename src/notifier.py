@@ -1,7 +1,7 @@
 import telegram
 from telegram.constants import ParseMode
 from loguru import logger
-from typing import Dict
+from typing import Dict, List
 import html
 import asyncio
 from datetime import datetime
@@ -74,6 +74,27 @@ async def send_notification(
         logger.error(f"Failed to send notification for: {news_item.get('title')}")
     except Exception as e:
         logger.error(f"An unexpected error occurred in send_notification: {e}")
+
+
+async def send_messages(bot_token: str, chat_id: str, messages: List[str]) -> bool:
+    """
+    Sends pre-formatted HTML messages in order (e.g. a multi-part digest).
+    Returns True if every message was sent.
+    """
+    bot = telegram.Bot(token=bot_token)
+    for text in messages:
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+        except telegram.error.TelegramError as e:
+            logger.error(f"Telegram error while sending message: {e}")
+            return False
+        await asyncio.sleep(1)  # stay well under Telegram's per-chat rate limit
+    return True
 
 
 if __name__ == "__main__":
