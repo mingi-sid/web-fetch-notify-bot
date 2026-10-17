@@ -23,8 +23,8 @@ llm:
     digest_model: "claude-sonnet-5-5"
   gemini:
     api_key: "YOUR_GEMINI_API_KEY"      # 비워두면 GEMINI_API_KEY 환경변수 사용
-    screening_model: "YOUR_GEMINI_MODEL"
-    digest_model: "YOUR_GEMINI_MODEL"
+    screening_model: "gemini-flash-lite-latest"   # 선별(넓게 걸러내기·점수)은 thinking 없이 실행
+    digest_model: "gemini-flash-latest"
 
 digest:
   # 수집 대상 언론사.
@@ -83,7 +83,7 @@ digest:
 
   # 다이제스트마다 '관심사 기사'와 '오늘의 주요 기사' 두 섹션을 각각 별도 메시지로 전송.
   #   max_articles: 섹션별 최대 기사 수. 기준을 넘는 기사가 적어도 절반(올림)은 채움
-  #   min_score:    섹션 기준 점수 (1-5, 기본 4)
+  #   min_score:    섹션 기준 점수 (1-10, 기본 7)
   digests:
     - name: "관심 이슈"
       sources: [hani, khan, chosun, segye, pressian, newscham, ohmynews]

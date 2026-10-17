@@ -12,7 +12,7 @@ KST = timezone(timedelta(hours=9))
 TRIAGE_CHUNK_SIZE = 300     # titles per triage request
 SCORING_CHUNK_SIZE = 80     # articles per scoring request
 TELEGRAM_LIMIT = 4000       # Telegram caps messages at 4096 chars; leave headroom
-DEFAULT_MIN_SCORE = 4
+DEFAULT_MIN_SCORE = 7
 
 # Each section picks articles by its primary score, breaking ties with the other.
 SECTIONS = [
@@ -30,14 +30,21 @@ TRIAGE_SYSTEM = (
 )
 
 SCORING_SYSTEM = (
-    "당신은 뉴스 큐레이터입니다. 독자 관심사와 기사 목록(제목, 짧은 요약)을 받아 기사마다 두 점수를 매깁니다.\n"
-    "- relevance (1-5): 독자 관심사와 얼마나 직접 관련되는가. 5는 관심사의 핵심 주제를 정면으로 다룸, "
-    "1은 무관.\n"
-    "- importance (1-5): 관심사와 별개로 사안 자체가 얼마나 중요한가. 파급력, 공공성, 새로움, 후속 보도 가치를 "
-    "기준으로 하며, 5는 그날의 주요 뉴스, 1은 단신·홍보성 기사.\n"
+    "당신은 깐깐한 뉴스 큐레이터입니다. 독자 관심사와 기사 목록(제목, 짧은 요약)을 받아 기사마다 두 점수를 1~10점으로 매깁니다.\n"
+    "- relevance: 독자 관심사와 얼마나 직접 관련되는가.\n"
+    "  10: 관심사의 핵심 주제를 정면으로 다루고, 독자가 반드시 챙겨야 할 기사\n"
+    "  7-9: 관심사 주제를 직접 다룸\n"
+    "  4-6: 관심사와 부분적으로 겹치거나 간접적으로 관련됨\n"
+    "  1-3: 관련이 희박하거나 무관함 (같은 지역·분야라는 이유만으로는 4점 미만)\n"
+    "- importance: 관심사와 별개로 사안 자체가 얼마나 중요한가 (파급력, 공공성, 새로움, 후속 보도 가치).\n"
+    "  10: 그날 최상위 뉴스\n"
+    "  7-9: 주요 정책·정치·사회 사안, 큰 사건사고\n"
+    "  4-6: 의미는 있지만 파급력이 제한적인 기사\n"
+    "  1-3: 단신, 행사·홍보, 동정 기사\n"
+    "점수는 목록 전체에서 상대적으로 매기고 고르게 분포시킵니다. 7점 이상은 목록의 일부 기사에만 줍니다.\n"
     "같은 사건을 다룬 기사가 여러 개면, 대표 기사 하나를 정하고 나머지는 duplicate_of에 대표 기사 번호를 적습니다.\n"
     "반드시 JSON만 출력합니다: "
-    "{\"scores\": [{\"id\": <번호>, \"relevance\": <1-5>, \"importance\": <1-5>, \"duplicate_of\": <번호 또는 null>}]}"
+    "{\"scores\": [{\"id\": <번호>, \"relevance\": <1-10>, \"importance\": <1-10>, \"duplicate_of\": <번호 또는 null>}]}"
 )
 
 DIGEST_SYSTEM = (
@@ -95,7 +102,8 @@ def triage(llm: LLMClient, interests: str, candidates: List[Dict],
         lines = [f"[{start + i}] ({_source_name(source_names, a)}) {a['title']}" for i, a in enumerate(chunk)]
         prompt = f"## 독자 관심사\n{interests}\n\n## 기사 제목 ({len(chunk)}건)\n" + "\n".join(lines)
         try:
-            result = llm.complete_json(llm.screening_model, TRIAGE_SYSTEM, prompt, max_tokens=16000)
+            result = llm.complete_json(llm.screening_model, TRIAGE_SYSTEM, prompt, max_tokens=16000,
+                                       thinking=False)
         except Exception as e:
             # Fail open: if triage breaks, let scoring see the whole chunk.
             logger.error(f"Triage request failed, keeping the whole chunk: {e}")
@@ -124,7 +132,8 @@ def score(llm: LLMClient, interests: str, candidates: List[Dict],
         ]
         prompt = f"## 독자 관심사\n{interests}\n\n## 기사 목록 ({len(chunk)}건)\n" + "\n".join(lines)
         try:
-            result = llm.complete_json(llm.screening_model, SCORING_SYSTEM, prompt, max_tokens=16000)
+            result = llm.complete_json(llm.screening_model, SCORING_SYSTEM, prompt, max_tokens=16000,
+                                       thinking=False)
         except Exception as e:
             logger.error(f"Scoring request failed: {e}")
             continue
