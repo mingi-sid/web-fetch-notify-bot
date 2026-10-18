@@ -15,36 +15,54 @@ TELEGRAM_LIMIT = 4000       # Telegram caps messages at 4096 chars; leave headro
 DEFAULT_MIN_SCORE = 7
 
 # Each section picks articles by its primary score, breaking ties with the other.
+# How each section picks articles. Eligibility and ordering are separate:
+#   - eligible: primary >= min_score (digest setting) and secondary >= min_secondary
+#   - ordered by: primary * (1 - secondary_weight) + secondary * secondary_weight
+#   - must_include: primary at or above this is always picked first, whatever the secondary
+#     score (e.g. breaking news in the importance section). None disables it.
+# So the secondary score shapes the ranking without cutting off major news.
+# Each key can be overridden per digest under `sections.<key>`.
 SECTIONS = [
-    {"key": "relevance", "title": "🎯 관심사 기사", "primary": "relevance", "secondary": "importance"},
-    {"key": "importance", "title": "📌 오늘의 주요 기사", "primary": "importance", "secondary": "relevance"},
+    {"key": "relevance", "title": "🎯 관심사 기사", "primary": "relevance", "secondary": "importance",
+     "secondary_weight": 0.3, "min_secondary": 4, "must_include": None},
+    {"key": "importance", "title": "📌 오늘의 주요 기사", "primary": "importance", "secondary": "relevance",
+     "secondary_weight": 0.3, "min_secondary": 1, "must_include": 9},
 ]
+
+DEFAULT_PERSPECTIVE = "한국 사회 전반의 독자"
 
 TRIAGE_SYSTEM = (
     "당신은 뉴스 편집 보조입니다. 기사 제목 목록에서 독자에게 전혀 쓸모없는 기사만 걸러냅니다. "
     "다음 중 하나라도 해당할 가능성이 있으면 남깁니다: (1) 독자 관심사와 조금이라도 관련됨, "
-    "(2) 관심사와 무관해도 사회적으로 중요한 사안(큰 사건사고, 주요 정책·정치, 공공성이 큰 이슈). "
-    "단순 행사 홍보, 동정, 연예·스포츠, 생활정보, 지역 단신처럼 둘 다 아닌 기사만 제외합니다. "
+    "(2) 관심사와 무관해도 주어진 관점에서 중요한 사안(큰 사건사고, 주요 정책·정치, 공공성이 큰 이슈). "
+    "단순 행사 홍보, 동정, 연예·스포츠, 생활정보, 단신처럼 둘 다 아닌 기사만 제외합니다. "
     "애매하면 남깁니다. "
     "반드시 JSON만 출력합니다: {\"keep\": [<번호>, ...]}"
 )
 
-SCORING_SYSTEM = (
-    "당신은 깐깐한 뉴스 큐레이터입니다. 독자 관심사와 기사 목록(제목, 짧은 요약)을 받아 기사마다 두 점수를 1~10점으로 매깁니다.\n"
-    "- relevance: 독자 관심사와 얼마나 직접 관련되는가.\n"
+RELEVANCE_SYSTEM = (
+    "당신은 깐깐한 뉴스 큐레이터입니다. 독자 관심사와 기사 목록(제목, 짧은 요약)을 받아 "
+    "기사마다 관심사와의 관련도(relevance)를 1~10점으로 매깁니다. 사안의 중요도는 따지지 않습니다.\n"
     "  10: 관심사의 핵심 주제를 정면으로 다루고, 독자가 반드시 챙겨야 할 기사\n"
     "  7-9: 관심사 주제를 직접 다룸\n"
     "  4-6: 관심사와 부분적으로 겹치거나 간접적으로 관련됨\n"
     "  1-3: 관련이 희박하거나 무관함 (같은 지역·분야라는 이유만으로는 4점 미만)\n"
-    "- importance: 관심사와 별개로 사안 자체가 얼마나 중요한가 (파급력, 공공성, 새로움, 후속 보도 가치).\n"
-    "  10: 그날 최상위 뉴스\n"
-    "  7-9: 주요 정책·정치·사회 사안, 큰 사건사고\n"
-    "  4-6: 의미는 있지만 파급력이 제한적인 기사\n"
-    "  1-3: 단신, 행사·홍보, 동정 기사\n"
     "점수는 목록 전체에서 상대적으로 매기고 고르게 분포시킵니다. 7점 이상은 목록의 일부 기사에만 줍니다.\n"
     "같은 사건을 다룬 기사가 여러 개면, 대표 기사 하나를 정하고 나머지는 duplicate_of에 대표 기사 번호를 적습니다.\n"
     "반드시 JSON만 출력합니다: "
-    "{\"scores\": [{\"id\": <번호>, \"relevance\": <1-10>, \"importance\": <1-10>, \"duplicate_of\": <번호 또는 null>}]}"
+    "{\"scores\": [{\"id\": <번호>, \"relevance\": <1-10>, \"duplicate_of\": <번호 또는 null>}]}"
+)
+
+IMPORTANCE_SYSTEM = (
+    "당신은 깐깐한 뉴스 데스크입니다. 주어진 관점의 독자에게 각 기사가 다루는 사안이 얼마나 중요한지"
+    "(importance)를 1~10점으로 매깁니다. 독자의 개인적 관심사는 고려하지 않고, 사안의 파급력, 공공성, "
+    "새로움, 후속 보도 가치만 봅니다.\n"
+    "  10: 그 관점에서 그날 최상위 뉴스 (중대 속보, 큰 사건사고)\n"
+    "  7-9: 주요 정책·정치·사회 사안\n"
+    "  4-6: 의미는 있지만 파급력이 제한적인 기사\n"
+    "  1-3: 단신, 행사·홍보, 동정, 사진·책 소개 기사\n"
+    "점수는 목록 전체에서 상대적으로 매기고 고르게 분포시킵니다. 7점 이상은 목록의 일부 기사에만 줍니다.\n"
+    "반드시 JSON만 출력합니다: {\"scores\": [{\"id\": <번호>, \"importance\": <1-10>}]}"
 )
 
 DIGEST_SYSTEM = (
@@ -93,17 +111,18 @@ def prefilter(candidates: List[Dict], exclude_title_keywords: List[str],
 # --- Stage 2: lenient LLM triage on titles ---
 
 
-def triage(llm: LLMClient, interests: str, candidates: List[Dict],
+def triage(llm: LLMClient, interests: str, perspective: str, candidates: List[Dict],
            source_names: Dict[str, str]) -> List[Dict]:
     """Removes clearly irrelevant and unimportant articles, keeping anything borderline."""
     keep = set()
     for start in range(0, len(candidates), TRIAGE_CHUNK_SIZE):
         chunk = candidates[start:start + TRIAGE_CHUNK_SIZE]
         lines = [f"[{start + i}] ({_source_name(source_names, a)}) {a['title']}" for i, a in enumerate(chunk)]
-        prompt = f"## 독자 관심사\n{interests}\n\n## 기사 제목 ({len(chunk)}건)\n" + "\n".join(lines)
+        prompt = (f"## 독자 관심사\n{interests}\n\n## 중요도 판단 관점\n{perspective}\n\n"
+                  f"## 기사 제목 ({len(chunk)}건)\n" + "\n".join(lines))
         try:
             result = llm.complete_json(llm.screening_model, TRIAGE_SYSTEM, prompt, max_tokens=16000,
-                                       thinking=False)
+                                       thinking=False, stage="triage")
         except Exception as e:
             # Fail open: if triage breaks, let scoring see the whole chunk.
             logger.error(f"Triage request failed, keeping the whole chunk: {e}")
@@ -119,9 +138,9 @@ def triage(llm: LLMClient, interests: str, candidates: List[Dict],
 # --- Stage 3: score relevance and importance ---
 
 
-def score(llm: LLMClient, interests: str, candidates: List[Dict],
-          source_names: Dict[str, str]) -> List[Dict]:
-    """Returns candidates annotated with relevance/importance scores, with duplicates removed."""
+def _score_pass(llm: LLMClient, system: str, context: str, candidates: List[Dict],
+                source_names: Dict[str, str], stage: str) -> Dict[int, Dict]:
+    """Runs one scoring prompt over all candidates in chunks; returns {candidate index: item}."""
     scored: Dict[int, Dict] = {}
     for start in range(0, len(candidates), SCORING_CHUNK_SIZE):
         chunk = candidates[start:start + SCORING_CHUNK_SIZE]
@@ -130,27 +149,44 @@ def score(llm: LLMClient, interests: str, candidates: List[Dict],
             + (f" — {a['description'][:150]}" if a.get("description") else "")
             for i, a in enumerate(chunk)
         ]
-        prompt = f"## 독자 관심사\n{interests}\n\n## 기사 목록 ({len(chunk)}건)\n" + "\n".join(lines)
+        prompt = f"{context}\n\n## 기사 목록 ({len(chunk)}건)\n" + "\n".join(lines)
         try:
-            result = llm.complete_json(llm.screening_model, SCORING_SYSTEM, prompt, max_tokens=16000,
-                                       thinking=False)
+            result = llm.complete_json(llm.screening_model, system, prompt, max_tokens=16000,
+                                       thinking=False, stage=stage)
         except Exception as e:
-            logger.error(f"Scoring request failed: {e}")
+            logger.error(f"{stage} request failed for articles {start}-{start + len(chunk) - 1}: {e}")
             continue
         for item in result.get("scores", []):
             idx = item.get("id")
             if isinstance(idx, int) and start <= idx < start + len(chunk):
                 scored[idx] = item
+    return scored
+
+
+def score(llm: LLMClient, interests: str, perspective: str, candidates: List[Dict],
+          source_names: Dict[str, str]) -> List[Dict]:
+    """
+    Annotates candidates with relevance and importance, scored in separate requests so that
+    importance (judged from `perspective`, without the reader's interests) isn't pulled up by
+    relevance. Duplicates (per the relevance pass) are removed.
+    """
+    relevance = _score_pass(llm, RELEVANCE_SYSTEM, f"## 독자 관심사\n{interests}",
+                            candidates, source_names, "relevance")
+    importance = _score_pass(llm, IMPORTANCE_SYSTEM, f"## 중요도 판단 관점\n{perspective}",
+                             candidates, source_names, "importance")
 
     articles = []
-    for idx, item in scored.items():
-        if item.get("duplicate_of") not in (None, idx) and item["duplicate_of"] in scored:
+    for idx, rel in relevance.items():
+        if rel.get("duplicate_of") not in (None, idx) and rel["duplicate_of"] in relevance:
+            continue
+        if idx not in importance:
+            logger.warning(f"No importance score for '{candidates[idx]['title']}'; skipping.")
             continue
         try:
             articles.append({
                 **candidates[idx],
-                "relevance": int(item.get("relevance", 0)),
-                "importance": int(item.get("importance", 0)),
+                "relevance": int(rel.get("relevance", 0)),
+                "importance": int(importance[idx].get("importance", 0)),
             })
         except (TypeError, ValueError):
             continue
@@ -161,27 +197,41 @@ def score(llm: LLMClient, interests: str, candidates: List[Dict],
     return articles
 
 
-def select_sections(articles: List[Dict], max_articles: int, min_score: int) -> Dict[str, List[Dict]]:
+def select_sections(articles: List[Dict], max_articles: int, min_score: float,
+                    overrides: Dict[str, Dict] = {}) -> Dict[str, List[Dict]]:
     """
-    Picks articles for each section by score. Articles at or above `min_score` are taken
-    first; if that yields fewer than half of `max_articles`, the next best fill the gap.
-    Sections are filled in order, and an article appears in only one section.
+    Picks articles for each section (see SECTIONS): must-include articles first, then eligible
+    articles by mixed score. If that yields fewer than half of `max_articles`, the next best
+    articles that still meet `min_secondary` fill the gap. Sections are filled in order, and an
+    article appears in only one section.
     """
     minimum = math.ceil(max_articles / 2)
     used, sections = set(), {}
     for section in SECTIONS:
-        primary, secondary = section["primary"], section["secondary"]
+        conf = {**section, **overrides.get(section["key"], {})}
+        primary, secondary = conf["primary"], conf["secondary"]
+        weight, min_secondary, must_include = conf["secondary_weight"], conf["min_secondary"], conf["must_include"]
+
+        def mixed(a):
+            return a[primary] * (1 - weight) + a[secondary] * weight
+
         pool = sorted(
             (a for a in articles if a["link"] not in used),
-            key=lambda a: (a[primary], a[secondary]),
+            key=lambda a: (mixed(a), a[primary]),
             reverse=True,
         )
-        picked = [a for a in pool if a[primary] >= min_score][:max_articles]
+        forced = [a for a in pool if must_include is not None and a[primary] >= must_include]
+        eligible = [a for a in pool if a not in forced
+                    and a[primary] >= min_score and a[secondary] >= min_secondary]
+        picked = (forced + eligible)[:max_articles]
         if len(picked) < minimum:
-            picked = pool[:minimum]
+            filler = [a for a in pool if a not in picked and a[secondary] >= min_secondary]
+            picked += filler[:minimum - len(picked)]
+
         used.update(a["link"] for a in picked)
         sections[section["key"]] = picked
-        logger.info(f"Section '{section['key']}': {len(picked)} articles.")
+        logger.info(f"Section '{section['key']}': {len(picked)} articles "
+                    f"({len(forced)} must-include, {len(eligible)} eligible).")
     return sections
 
 
@@ -215,7 +265,7 @@ def summarize_articles(llm: LLMClient, interests: str, articles: List[Tuple[str,
         ) + "\n\n"
     prompt += "## 기사\n" + "\n\n".join(blocks)
     try:
-        return llm.complete_json(llm.digest_model, DIGEST_SYSTEM, prompt, max_tokens=16000)
+        return llm.complete_json(llm.digest_model, DIGEST_SYSTEM, prompt, max_tokens=16000, stage="summary")
     except Exception as e:
         logger.error(f"Digest summarization failed: {e}")
         return {}
@@ -270,6 +320,7 @@ def build_digest(llm: LLMClient, digest_conf: Dict, candidates: List[Dict], sour
     interests = digest_conf["interests"]
     max_articles = digest_conf.get("max_articles", 10)
     min_score = digest_conf.get("min_score", DEFAULT_MIN_SCORE)
+    perspective = digest_conf.get("importance_perspective", DEFAULT_PERSPECTIVE)
     source_names = {sid: conf.get("name", sid) for sid, conf in sources_conf.items()}
 
     candidates = prefilter(
@@ -277,11 +328,13 @@ def build_digest(llm: LLMClient, digest_conf: Dict, candidates: List[Dict], sour
         exclude_title_keywords + digest_conf.get("exclude_title_keywords", []),
         exclude_url_patterns + digest_conf.get("exclude_url_patterns", []),
     )
-    candidates = triage(llm, interests, candidates, source_names)
-    articles = score(llm, interests, candidates, source_names)
+    llm.reset_usage()
+    candidates = triage(llm, interests, perspective, candidates, source_names)
+    articles = score(llm, interests, perspective, candidates, source_names)
     if not articles:
+        llm.log_usage(name)
         return [], []
-    sections = select_sections(articles, max_articles, min_score)
+    sections = select_sections(articles, max_articles, min_score, digest_conf.get("sections") or {})
 
     def can_fetch(a):
         return sources_conf[a["source_id"]].get("fetch_body", True)
@@ -317,4 +370,5 @@ def build_digest(llm: LLMClient, digest_conf: Dict, candidates: List[Dict], sour
             [a for a in picked if a["link"] not in summarized_links], source_names,
         )
         links += [a["link"] for a in picked]
+    llm.log_usage(name)
     return messages, links

@@ -83,7 +83,15 @@ digest:
 
   # 다이제스트마다 '관심사 기사'와 '오늘의 주요 기사' 두 섹션을 각각 별도 메시지로 전송.
   #   max_articles: 섹션별 최대 기사 수. 기준을 넘는 기사가 적어도 절반(올림)은 채움
-  #   min_score:    섹션 기준 점수 (1-10, 기본 7)
+  #   importance_perspective: 중요도를 어떤 입장에서 판단할지 (생략 시 "한국 사회 전반의 독자")
+  #                 관련도와 별도 요청으로 매기며, 독자 관심사는 고려하지 않음
+  #   min_score:    섹션에 들어갈 기준 점수 (1-10, 기본 7). 섹션의 주 점수(관심사=관련도, 주요=중요도)에 적용
+  #   sections:     섹션별 선정 방식 (생략 시 기본값)
+  #     relevance:  {secondary_weight: 0.3, min_secondary: 4, must_include: null}
+  #     importance: {secondary_weight: 0.3, min_secondary: 1, must_include: 9}
+  #       secondary_weight: 순서를 정할 때 보조 점수 비중 (관심사 섹션의 보조 점수는 중요도, 주요 섹션은 관련도)
+  #       min_secondary:    보조 점수가 이보다 낮으면 제외
+  #       must_include:     주 점수가 이 이상이면 보조 점수와 무관하게 먼저 포함 (속보 등)
   digests:
     - name: "관심 이슈"
       sources: [hani, khan, chosun, segye, pressian, newscham, ohmynews]
@@ -93,4 +101,5 @@ digest:
     - name: "대전·충청"
       sources: [daejonilbo, dtnews24, newstnt, chungnam, cctoday, tjb, tjmbc]
       interests: "대전·충청 지역 정치, 도시개발, 노동, 시민사회 관련 기사를 봅니다"
+      importance_perspective: "대전 지역 시민. 대전·충청에 직접 영향을 미치는 사안을 높게 보고, 전국 사안은 전국적 무게가 매우 클 때만 높게 본다"
       max_articles: 10
