@@ -87,11 +87,12 @@ digest:
   #                 관련도와 별도 요청으로 매기며, 독자 관심사는 고려하지 않음
   #   min_score:    섹션에 들어갈 기준 점수 (1-10, 기본 7). 섹션의 주 점수(관심사=관련도, 주요=중요도)에 적용
   #   sections:     섹션별 선정 방식 (생략 시 기본값)
-  #     relevance:  {secondary_weight: 0.3, min_secondary: 4, must_include: null}
-  #     importance: {secondary_weight: 0.3, min_secondary: 1, must_include: 9}
+  #     relevance:  {secondary_weight: 0.3, min_secondary: 4, must_include: null, topic_share: 0.4}
+  #     importance: {secondary_weight: 0.3, min_secondary: 1, must_include: 9, topic_share: null}
   #       secondary_weight: 순서를 정할 때 보조 점수 비중 (관심사 섹션의 보조 점수는 중요도, 주요 섹션은 관련도)
   #       min_secondary:    보조 점수가 이보다 낮으면 제외
   #       must_include:     주 점수가 이 이상이면 보조 점수와 무관하게 먼저 포함 (속보 등)
+  #       topic_share:      한 관심 주제가 섹션에서 차지할 수 있는 최대 비율 (올림). 다른 주제로 채울 수 없을 때만 초과
   digests:
     - name: "관심 이슈"
       sources: [hani, khan, chosun, segye, pressian, newscham, ohmynews]

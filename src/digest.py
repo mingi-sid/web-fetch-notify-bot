@@ -20,13 +20,16 @@ DEFAULT_MIN_SCORE = 7
 #   - ordered by: primary * (1 - secondary_weight) + secondary * secondary_weight
 #   - must_include: primary at or above this is always picked first, whatever the secondary
 #     score (e.g. breaking news in the importance section). None disables it.
+#   - topic_share: at most this share of the section (rounded up) may come from one topic of
+#     the reader's interests, so one busy topic can't crowd out the rest. Over-cap articles
+#     only fill seats that no other topic can. None disables it.
 # So the secondary score shapes the ranking without cutting off major news.
 # Each key can be overridden per digest under `sections.<key>`.
 SECTIONS = [
     {"key": "relevance", "title": "🎯 관심사 기사", "primary": "relevance", "secondary": "importance",
-     "secondary_weight": 0.3, "min_secondary": 4, "must_include": None},
+     "secondary_weight": 0.3, "min_secondary": 4, "must_include": None, "topic_share": 0.4},
     {"key": "importance", "title": "📌 오늘의 주요 기사", "primary": "importance", "secondary": "relevance",
-     "secondary_weight": 0.3, "min_secondary": 1, "must_include": 9},
+     "secondary_weight": 0.3, "min_secondary": 1, "must_include": 9, "topic_share": None},
 ]
 
 DEFAULT_PERSPECTIVE = "한국 사회 전반의 독자"
@@ -47,10 +50,16 @@ RELEVANCE_SYSTEM = (
     "  7-9: 관심사 주제를 직접 다룸\n"
     "  4-6: 관심사와 부분적으로 겹치거나 간접적으로 관련됨\n"
     "  1-3: 관련이 희박하거나 무관함 (같은 지역·분야라는 이유만으로는 4점 미만)\n"
+    "판단 기준:\n"
+    "- 키워드가 아니라 기사가 실제로 무엇을 다루는지로 판단합니다. 관심 주제를 수단·배경·소재로만 언급하는 "
+    "기사(예: AI를 도구로 쓴 단속 기사, 로봇이 등장하는 전시·영상 기사, 기업 홍보)는 4점 미만입니다.\n"
+    "- 사건·사고 기사라도 관심 주제의 구조적 문제를 드러내면 높게 봅니다(예: 여성 대상 폭력은 젠더 이슈).\n"
+    "- 관심사에 여러 주제가 있으면 모든 주제를 같은 무게로 봅니다. 목록에서 먼저 나온 주제를 우대하지 않습니다.\n"
     "점수는 목록 전체에서 상대적으로 매기고 고르게 분포시킵니다. 7점 이상은 목록의 일부 기사에만 줍니다.\n"
+    "topic에는 기사가 해당하는 관심사 주제를 관심사 설명에 쓰인 표현 그대로 하나만 적고, 해당 주제가 없으면 \"기타\"로 적습니다.\n"
     "같은 사건을 다룬 기사가 여러 개면, 대표 기사 하나를 정하고 나머지는 duplicate_of에 대표 기사 번호를 적습니다.\n"
     "반드시 JSON만 출력합니다: "
-    "{\"scores\": [{\"id\": <번호>, \"relevance\": <1-10>, \"duplicate_of\": <번호 또는 null>}]}"
+    "{\"scores\": [{\"id\": <번호>, \"relevance\": <1-10>, \"topic\": \"<주제>\", \"duplicate_of\": <번호 또는 null>}]}"
 )
 
 IMPORTANCE_SYSTEM = (
@@ -131,6 +140,9 @@ def triage(llm: LLMClient, interests: str, perspective: str, candidates: List[Di
         keep.update(i for i in result.get("keep", []) if isinstance(i, int) and start <= i < start + len(chunk))
 
     kept = [candidates[i] for i in sorted(keep)]
+    for i, a in enumerate(candidates):
+        if i not in keep:
+            logger.debug(f"triage dropped | ({_source_name(source_names, a)}) {a['title']}")
     logger.info(f"Triage: {len(candidates)} -> {len(kept)} articles.")
     return kept
 
@@ -186,15 +198,43 @@ def score(llm: LLMClient, interests: str, perspective: str, candidates: List[Dic
             articles.append({
                 **candidates[idx],
                 "relevance": int(rel.get("relevance", 0)),
+                "topic": str(rel.get("topic") or "기타").strip(),
                 "importance": int(importance[idx].get("importance", 0)),
             })
         except (TypeError, ValueError):
             continue
 
     for a in sorted(articles, key=lambda a: (a["relevance"], a["importance"]), reverse=True):
-        logger.debug(f"score R{a['relevance']} I{a['importance']} | {a['title']}")
+        logger.debug(f"score R{a['relevance']} I{a['importance']} [{a['topic']}] | {a['title']}")
     logger.info(f"Scoring: {len(candidates)} -> {len(articles)} unique articles scored.")
     return articles
+
+
+def _cap_topics(ranked: List[Dict], max_articles: int, topic_share) -> List[Dict]:
+    """
+    Takes up to `max_articles` from `ranked` in order, allowing at most ceil(max * topic_share)
+    per topic. Articles skipped for their topic fill any seats still empty afterwards.
+    """
+    if topic_share is None:
+        return ranked[:max_articles]
+    cap = max(1, math.ceil(max_articles * topic_share))
+    counts: Dict[str, int] = {}
+    picked, deferred = [], []
+    for a in ranked:
+        if len(picked) >= max_articles:
+            break
+        topic = a.get("topic", "기타")
+        if counts.get(topic, 0) < cap:
+            picked.append(a)
+            counts[topic] = counts.get(topic, 0) + 1
+        else:
+            deferred.append(a)
+    if deferred and len(picked) < max_articles:
+        picked += deferred[:max_articles - len(picked)]
+        picked.sort(key=ranked.index)
+    if deferred:
+        logger.info(f"Topic cap {cap}/topic deferred {len(deferred)} articles; topics: {counts}")
+    return picked
 
 
 def select_sections(articles: List[Dict], max_articles: int, min_score: float,
@@ -223,7 +263,7 @@ def select_sections(articles: List[Dict], max_articles: int, min_score: float,
         forced = [a for a in pool if must_include is not None and a[primary] >= must_include]
         eligible = [a for a in pool if a not in forced
                     and a[primary] >= min_score and a[secondary] >= min_secondary]
-        picked = (forced + eligible)[:max_articles]
+        picked = _cap_topics(forced + eligible, max_articles, conf["topic_share"])
         if len(picked) < minimum:
             filler = [a for a in pool if a not in picked and a[secondary] >= min_secondary]
             picked += filler[:minimum - len(picked)]
