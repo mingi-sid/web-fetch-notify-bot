@@ -92,7 +92,9 @@ DIGEST_SYSTEM = (
     "- 본문이 없는 기사(본문: 없음)는 참고 브리프에 같은 사안이 분명히 다뤄졌으면 그 내용으로 요약하고, "
     "basis에 해당 브리프 이름을 적습니다.\n"
     "- 브리프에서도 찾을 수 없으면 제목과 RSS 요약(있으면)만으로 무슨 기사인지 1문장으로 설명하고 basis는 \"제목\"으로 둡니다. "
-    "이때 제목과 RSS 요약에서 알 수 없는 사실(수치, 인물, 경위, 결과)은 덧붙이지 않습니다.\n"
+    "본문을 읽지 않았으므로 단정하지 않습니다: \"~를 다룬 기사로 보입니다\", \"~라는 내용으로 보입니다\"처럼 추정임을 드러내고, "
+    "제목 속 주장이나 평가는 사실처럼 옮기지 말고 누구의 말인지 밝힙니다(예: \"국방부가 ~라며 반발했다는 내용으로 보입니다\"). "
+    "제목과 RSS 요약에서 알 수 없는 사실(수치, 인물, 경위, 결과, 의미 부여)은 덧붙이지 않고, **강조**도 쓰지 않습니다.\n"
     "기사마다 section 값(relevance 또는 importance)이 붙어 있습니다. "
     "overview에는 섹션별로 오늘 기사들을 관통하는 흐름을 2~3문장으로 씁니다. "
     "반드시 JSON만 출력합니다: "
@@ -355,7 +357,8 @@ def format_section(digest_name: str, section_title: str, overview: str, summariz
     for n, a in enumerate(summarized, 1):
         part = f"<b>{n}. [{html.escape(_source_name(source_names, a))}] {_title_link(a)}</b>"
         if a.get("summary"):
-            part += f"\n{_render_summary(a['summary'])}"
+            summary = a["summary"].replace("**", "") if a.get("basis") == "제목" else a["summary"]
+            part += f"\n{_render_summary(summary)}"
         if a.get("basis") == "제목":
             part += " <i>(제목 기반 추정)</i>"
         elif a.get("basis") and a["basis"] != "본문":
