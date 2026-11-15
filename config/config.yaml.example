@@ -91,7 +91,9 @@ digest:
   #   max_articles: 섹션별 최대 기사 수. 기준을 넘는 기사가 적어도 절반(올림)은 채움
   #   importance_perspective: 중요도를 어떤 입장에서 판단할지 (생략 시 "한국 사회 전반의 독자")
   #                 관련도와 별도 요청으로 매기며, 독자 관심사는 고려하지 않음
-  #   triage_max:   넓게 걸러내기 단계에서 남길 최대 기사 수 (기본 150). 뒤 단계 비용이 이 수에 비례
+  #   triage_max:   넓게 걸러내기 단계에서 남길 기사 수 (기본 150). 모델이 순위를 매겨 이 수만큼 채움.
+  #                 너무 엄격하면 늘리고, 비용이 크면 줄임. 뒤 단계(관련도·중요도) 비용이 이 수에 비례
+  #   triage_hint:  넓게 걸러내기에 덧붙일 다이제스트별 기준 (선택). 다른 다이제스트에는 영향 없음
   #   min_score:    섹션에 들어갈 기준 점수 (1-10, 기본 7). 섹션의 주 점수(관심사=관련도, 주요=중요도)에 적용
   #   sections:     섹션별 선정 방식 (생략 시 기본값)
   #     relevance:  {secondary_weight: 0.3, min_secondary: 4, must_include: null, topic_share: 0.4}
@@ -110,4 +112,6 @@ digest:
       sources: [daejonilbo, dtnews24, newstnt, chungnam, cctoday, tjb, tjmbc]
       interests: "대전·충청 지역 정치, 도시개발, 노동, 시민사회 관련 기사를 봅니다"
       importance_perspective: "대전 지역 시민. 대전·충청에 직접 영향을 미치는 사안을 높게 보고, 전국 사안은 전국적 무게가 매우 클 때만 높게 본다"
+      triage_max: 80
+      triage_hint: "대전시·구의 예산, 시정, 의회 기사는 관심사와 직접 관련이 없어도 남긴다. 대전 외 충청권 시군의 행사·동정은 제외한다."
       max_articles: 10

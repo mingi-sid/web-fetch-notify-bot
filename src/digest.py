@@ -39,11 +39,11 @@ SECTIONS = [
 DEFAULT_PERSPECTIVE = "한국 사회 전반의 독자"
 
 TRIAGE_SYSTEM = (
-    "당신은 뉴스 편집 보조입니다. 기사 제목 목록에서 독자에게 쓸모 있을 가능성이 높은 기사만 남깁니다. "
-    "다음 중 하나에 해당하는 기사를 남깁니다: (1) 독자 관심사와 관련됨, "
-    "(2) 관심사와 무관해도 주어진 관점에서 중요한 사안(큰 사건사고, 주요 정책·정치, 공공성이 큰 이슈). "
-    "단순 행사 홍보, 동정, 연예·스포츠, 생활정보, 단신은 제외합니다. "
-    "남길 수 있는 개수에 상한이 있으므로, 가능성이 높은 기사부터 순서대로 적습니다. "
+    "당신은 뉴스 편집 보조입니다. 기사 제목 목록에서 독자에게 쓸모 있을 가능성이 높은 순서로 기사를 고릅니다. "
+    "쓸모 있는 기사는 (1) 독자 관심사와 관련되거나, (2) 관심사와 무관해도 주어진 관점에서 중요한 사안"
+    "(큰 사건사고, 주요 정책·정치, 공공성이 큰 이슈)을 다룬 기사입니다. "
+    "단순 행사 홍보, 동정, 연예·스포츠, 생활정보, 단신은 가장 뒤로 미룹니다. "
+    "정해진 개수를 채워서, 가장 쓸모 있을 가능성이 높은 기사부터 순서대로 적습니다. "
     "반드시 JSON만 출력합니다: {\"keep\": [<번호>, ...]}"
 )
 
@@ -135,19 +135,25 @@ def prefilter(candidates: List[Dict], exclude_title_keywords: List[str],
 
 
 def triage(llm: LLMClient, interests: str, perspective: str, candidates: List[Dict],
-           source_names: Dict[str, str], max_keep: int = DEFAULT_TRIAGE_MAX) -> List[Dict]:
+           source_names: Dict[str, str], max_keep: int = DEFAULT_TRIAGE_MAX, hint: str = "") -> List[Dict]:
     """
-    Keeps the articles most likely to matter, up to `max_keep` overall. Each chunk gets a share
-    of the limit proportional to its size; the model lists its picks most promising first.
+    Keeps the `max_keep` articles most likely to matter. How strict triage is comes from this
+    number (set per digest), not from the prompt: the model ranks each chunk and fills its share
+    of the limit, proportional to the chunk's size. `hint` adds digest-specific guidance.
     """
     keep = set()
     for start in range(0, len(candidates), TRIAGE_CHUNK_SIZE):
         chunk = candidates[start:start + TRIAGE_CHUNK_SIZE]
         limit = max(1, math.ceil(max_keep * len(chunk) / len(candidates)))
+        if limit >= len(chunk):
+            keep.update(range(start, start + len(chunk)))  # nothing to cut; skip the request
+            continue
         lines = [f"[{start + i}] ({_source_name(source_names, a)}) {a['title']}" for i, a in enumerate(chunk)]
-        prompt = (f"## 독자 관심사\n{interests}\n\n## 중요도 판단 관점\n{perspective}\n\n"
-                  f"## 기사 제목 ({len(chunk)}건)\n" + "\n".join(lines) +
-                  f"\n\n최대 {limit}건까지 남깁니다.")
+        prompt = f"## 독자 관심사\n{interests}\n\n## 중요도 판단 관점\n{perspective}\n\n"
+        if hint:
+            prompt += f"## 추가 기준\n{hint}\n\n"
+        prompt += (f"## 기사 제목 ({len(chunk)}건)\n" + "\n".join(lines) +
+                   f"\n\n이 중 {limit}건을 골라, 쓸모 있을 가능성이 높은 순서로 적습니다.")
         try:
             result = llm.complete_json(llm.screening_model, TRIAGE_SYSTEM, prompt, max_tokens=16000,
                                        thinking=False, stage="triage")
@@ -406,7 +412,7 @@ def build_digest(llm: LLMClient, digest_conf: Dict, candidates: List[Dict], sour
     )
     llm.reset_usage()
     candidates = triage(llm, interests, perspective, candidates, source_names,
-                        digest_conf.get("triage_max", DEFAULT_TRIAGE_MAX))
+                        digest_conf.get("triage_max", DEFAULT_TRIAGE_MAX), digest_conf.get("triage_hint", ""))
     articles = score(llm, interests, perspective, candidates, source_names)
     if not articles:
         llm.log_usage(name)
