@@ -11,6 +11,10 @@ from src.sources import fetch_article_body
 KST = timezone(timedelta(hours=9))
 TRIAGE_CHUNK_SIZE = 300     # titles per triage request
 SCORING_CHUNK_SIZE = 80     # articles per scoring request
+DEFAULT_TRIAGE_MAX = 150    # articles kept by triage per digest
+DESCRIPTION_CHARS = 80      # description excerpt shown when scoring
+UNLISTED_RELEVANCE = 2      # scores given to articles the scorer leaves out
+UNLISTED_IMPORTANCE = 3     # (it lists only articles at or above 4)
 TELEGRAM_LIMIT = 4000       # Telegram caps messages at 4096 chars; leave headroom
 DEFAULT_MIN_SCORE = 7
 
@@ -35,11 +39,11 @@ SECTIONS = [
 DEFAULT_PERSPECTIVE = "한국 사회 전반의 독자"
 
 TRIAGE_SYSTEM = (
-    "당신은 뉴스 편집 보조입니다. 기사 제목 목록에서 독자에게 전혀 쓸모없는 기사만 걸러냅니다. "
-    "다음 중 하나라도 해당할 가능성이 있으면 남깁니다: (1) 독자 관심사와 조금이라도 관련됨, "
+    "당신은 뉴스 편집 보조입니다. 기사 제목 목록에서 독자에게 쓸모 있을 가능성이 높은 기사만 남깁니다. "
+    "다음 중 하나에 해당하는 기사를 남깁니다: (1) 독자 관심사와 관련됨, "
     "(2) 관심사와 무관해도 주어진 관점에서 중요한 사안(큰 사건사고, 주요 정책·정치, 공공성이 큰 이슈). "
-    "단순 행사 홍보, 동정, 연예·스포츠, 생활정보, 단신처럼 둘 다 아닌 기사만 제외합니다. "
-    "애매하면 남깁니다. "
+    "단순 행사 홍보, 동정, 연예·스포츠, 생활정보, 단신은 제외합니다. "
+    "남길 수 있는 개수에 상한이 있으므로, 가능성이 높은 기사부터 순서대로 적습니다. "
     "반드시 JSON만 출력합니다: {\"keep\": [<번호>, ...]}"
 )
 
@@ -56,10 +60,12 @@ RELEVANCE_SYSTEM = (
     "- 사건·사고 기사라도 관심 주제의 구조적 문제를 드러내면 높게 봅니다(예: 여성 대상 폭력은 젠더 이슈).\n"
     "- 관심사에 여러 주제가 있으면 모든 주제를 같은 무게로 봅니다. 목록에서 먼저 나온 주제를 우대하지 않습니다.\n"
     "점수는 목록 전체에서 상대적으로 매기고 고르게 분포시킵니다. 7점 이상은 목록의 일부 기사에만 줍니다.\n"
-    "topic에는 기사가 해당하는 관심사 주제를 관심사 설명에 쓰인 표현 그대로 하나만 적고, 해당 주제가 없으면 \"기타\"로 적습니다.\n"
-    "같은 사건을 다룬 기사가 여러 개면, 대표 기사 하나를 정하고 나머지는 duplicate_of에 대표 기사 번호를 적습니다.\n"
+    "관련도 4점 이상인 기사만 출력합니다. 출력하지 않은 기사는 3점 이하로 간주합니다.\n"
+    "topic에는 기사가 해당하는 관심사 주제를 관심사 설명에 쓰인 표현 그대로 하나만 적습니다.\n"
+    "같은 사건을 다룬 기사가 여러 개면, 대표 기사 하나를 정하고 나머지에만 dup에 대표 기사 번호를 적습니다. "
+    "중복이 아니면 dup을 생략합니다.\n"
     "반드시 JSON만 출력합니다: "
-    "{\"scores\": [{\"id\": <번호>, \"relevance\": <1-10>, \"topic\": \"<주제>\", \"duplicate_of\": <번호 또는 null>}]}"
+    "{\"scores\": [{\"id\": <번호>, \"r\": <4-10>, \"topic\": \"<주제>\"}, {\"id\": <번호>, \"r\": <4-10>, \"topic\": \"<주제>\", \"dup\": <번호>}]}"
 )
 
 IMPORTANCE_SYSTEM = (
@@ -71,7 +77,11 @@ IMPORTANCE_SYSTEM = (
     "  4-6: 의미는 있지만 파급력이 제한적인 기사\n"
     "  1-3: 단신, 행사·홍보, 동정, 사진·책 소개 기사\n"
     "점수는 목록 전체에서 상대적으로 매기고 고르게 분포시킵니다. 7점 이상은 목록의 일부 기사에만 줍니다.\n"
-    "반드시 JSON만 출력합니다: {\"scores\": [{\"id\": <번호>, \"importance\": <1-10>}]}"
+    "중요도 4점 이상인 기사만 출력합니다. 출력하지 않은 기사는 3점 이하로 간주합니다.\n"
+    "같은 사건을 다룬 기사가 여러 개면(사설·후속 기사 포함), 대표 기사 하나를 정하고 나머지에만 dup에 대표 기사 번호를 적습니다. "
+    "중복이 아니면 dup을 생략합니다.\n"
+    "반드시 JSON만 출력합니다: "
+    "{\"scores\": [{\"id\": <번호>, \"i\": <4-10>}, {\"id\": <번호>, \"i\": <4-10>, \"dup\": <번호>}]}"
 )
 
 DIGEST_SYSTEM = (
@@ -79,8 +89,10 @@ DIGEST_SYSTEM = (
     "각 기사는 2~3문장으로 핵심 사실과 그 기사가 왜 중요한지를 담아 요약하고, 주어진 자료에 없는 내용은 추측하지 않습니다. "
     "요약문에서 가장 중요한 핵심어나 구절 1~2개는 **이렇게** 감쌉니다. 남용하지 않습니다.\n"
     "- 본문이 있는 기사는 본문을 근거로 요약하고 basis는 \"본문\"으로 둡니다.\n"
-    "- 본문이 없는 기사(본문: 없음)는 참고 브리프에 같은 사안이 분명히 다뤄진 경우에만 그 내용으로 요약하고, "
-    "basis에 해당 브리프 이름을 적습니다. 브리프에서 찾을 수 없으면 summary와 basis를 빈 문자열로 둡니다.\n"
+    "- 본문이 없는 기사(본문: 없음)는 참고 브리프에 같은 사안이 분명히 다뤄졌으면 그 내용으로 요약하고, "
+    "basis에 해당 브리프 이름을 적습니다.\n"
+    "- 브리프에서도 찾을 수 없으면 제목과 RSS 요약(있으면)만으로 무슨 기사인지 1문장으로 설명하고 basis는 \"제목\"으로 둡니다. "
+    "이때 제목과 RSS 요약에서 알 수 없는 사실(수치, 인물, 경위, 결과)은 덧붙이지 않습니다.\n"
     "기사마다 section 값(relevance 또는 importance)이 붙어 있습니다. "
     "overview에는 섹션별로 오늘 기사들을 관통하는 흐름을 2~3문장으로 씁니다. "
     "반드시 JSON만 출력합니다: "
@@ -121,29 +133,35 @@ def prefilter(candidates: List[Dict], exclude_title_keywords: List[str],
 
 
 def triage(llm: LLMClient, interests: str, perspective: str, candidates: List[Dict],
-           source_names: Dict[str, str]) -> List[Dict]:
-    """Removes clearly irrelevant and unimportant articles, keeping anything borderline."""
+           source_names: Dict[str, str], max_keep: int = DEFAULT_TRIAGE_MAX) -> List[Dict]:
+    """
+    Keeps the articles most likely to matter, up to `max_keep` overall. Each chunk gets a share
+    of the limit proportional to its size; the model lists its picks most promising first.
+    """
     keep = set()
     for start in range(0, len(candidates), TRIAGE_CHUNK_SIZE):
         chunk = candidates[start:start + TRIAGE_CHUNK_SIZE]
+        limit = max(1, math.ceil(max_keep * len(chunk) / len(candidates)))
         lines = [f"[{start + i}] ({_source_name(source_names, a)}) {a['title']}" for i, a in enumerate(chunk)]
         prompt = (f"## 독자 관심사\n{interests}\n\n## 중요도 판단 관점\n{perspective}\n\n"
-                  f"## 기사 제목 ({len(chunk)}건)\n" + "\n".join(lines))
+                  f"## 기사 제목 ({len(chunk)}건)\n" + "\n".join(lines) +
+                  f"\n\n최대 {limit}건까지 남깁니다.")
         try:
             result = llm.complete_json(llm.screening_model, TRIAGE_SYSTEM, prompt, max_tokens=16000,
                                        thinking=False, stage="triage")
         except Exception as e:
-            # Fail open: if triage breaks, let scoring see the whole chunk.
-            logger.error(f"Triage request failed, keeping the whole chunk: {e}")
-            keep.update(range(start, start + len(chunk)))
+            # Fail open, but within the limit: keep the chunk's first articles.
+            logger.error(f"Triage request failed, keeping the first {limit} of the chunk: {e}")
+            keep.update(range(start, start + min(limit, len(chunk))))
             continue
-        keep.update(i for i in result.get("keep", []) if isinstance(i, int) and start <= i < start + len(chunk))
+        picks = [i for i in result.get("keep", []) if isinstance(i, int) and start <= i < start + len(chunk)]
+        keep.update(list(dict.fromkeys(picks))[:limit])
 
     kept = [candidates[i] for i in sorted(keep)]
     for i, a in enumerate(candidates):
         if i not in keep:
             logger.debug(f"triage dropped | ({_source_name(source_names, a)}) {a['title']}")
-    logger.info(f"Triage: {len(candidates)} -> {len(kept)} articles.")
+    logger.info(f"Triage: {len(candidates)} -> {len(kept)} articles (limit {max_keep}).")
     return kept
 
 
@@ -151,14 +169,18 @@ def triage(llm: LLMClient, interests: str, perspective: str, candidates: List[Di
 
 
 def _score_pass(llm: LLMClient, system: str, context: str, candidates: List[Dict],
-                source_names: Dict[str, str], stage: str) -> Dict[int, Dict]:
-    """Runs one scoring prompt over all candidates in chunks; returns {candidate index: item}."""
+                source_names: Dict[str, str], stage: str) -> Tuple[Dict[int, Dict], set]:
+    """
+    Runs one scoring prompt over all candidates in chunks.
+    Returns ({candidate index: item}, indices in chunks whose request failed).
+    """
     scored: Dict[int, Dict] = {}
+    failed = set()
     for start in range(0, len(candidates), SCORING_CHUNK_SIZE):
         chunk = candidates[start:start + SCORING_CHUNK_SIZE]
         lines = [
             f"[{start + i}] ({_source_name(source_names, a)}) {a['title']}"
-            + (f" — {a['description'][:150]}" if a.get("description") else "")
+            + (f" — {a['description'][:DESCRIPTION_CHARS]}" if a.get("description") else "")
             for i, a in enumerate(chunk)
         ]
         prompt = f"{context}\n\n## 기사 목록 ({len(chunk)}건)\n" + "\n".join(lines)
@@ -167,12 +189,13 @@ def _score_pass(llm: LLMClient, system: str, context: str, candidates: List[Dict
                                        thinking=False, stage=stage)
         except Exception as e:
             logger.error(f"{stage} request failed for articles {start}-{start + len(chunk) - 1}: {e}")
+            failed.update(range(start, start + len(chunk)))
             continue
         for item in result.get("scores", []):
             idx = item.get("id")
             if isinstance(idx, int) and start <= idx < start + len(chunk):
                 scored[idx] = item
-    return scored
+    return scored, failed
 
 
 def score(llm: LLMClient, interests: str, perspective: str, candidates: List[Dict],
@@ -182,24 +205,30 @@ def score(llm: LLMClient, interests: str, perspective: str, candidates: List[Dic
     importance (judged from `perspective`, without the reader's interests) isn't pulled up by
     relevance. Duplicates (per the relevance pass) are removed.
     """
-    relevance = _score_pass(llm, RELEVANCE_SYSTEM, f"## 독자 관심사\n{interests}",
+    relevance, failed_rel = _score_pass(llm, RELEVANCE_SYSTEM, f"## 독자 관심사\n{interests}",
                             candidates, source_names, "relevance")
-    importance = _score_pass(llm, IMPORTANCE_SYSTEM, f"## 중요도 판단 관점\n{perspective}",
+    importance, failed_imp = _score_pass(llm, IMPORTANCE_SYSTEM, f"## 중요도 판단 관점\n{perspective}",
                              candidates, source_names, "importance")
 
+    # Both passes list only articles scoring 4+; the rest get low default scores. Articles in a
+    # chunk whose request failed are skipped rather than defaulted.
+    failed = failed_rel | failed_imp
     articles = []
-    for idx, rel in relevance.items():
-        if rel.get("duplicate_of") not in (None, idx) and rel["duplicate_of"] in relevance:
+    for idx, candidate in enumerate(candidates):
+        if idx in failed:
             continue
-        if idx not in importance:
-            logger.warning(f"No importance score for '{candidates[idx]['title']}'; skipping.")
+        rel = relevance.get(idx, {})
+        imp = importance.get(idx, {})
+        # Either pass may mark an article as a duplicate of a representative it listed.
+        if any(d not in (None, idx) and d in scored for d, scored in
+               ((rel.get("dup"), relevance), (imp.get("dup"), importance))):
             continue
         try:
             articles.append({
-                **candidates[idx],
-                "relevance": int(rel.get("relevance", 0)),
+                **candidate,
+                "relevance": int(rel.get("r", UNLISTED_RELEVANCE)),
                 "topic": str(rel.get("topic") or "기타").strip(),
-                "importance": int(importance[idx].get("importance", 0)),
+                "importance": int(imp.get("i", UNLISTED_IMPORTANCE)),
             })
         except (TypeError, ValueError):
             continue
@@ -289,11 +318,13 @@ def summarize_articles(llm: LLMClient, interests: str, articles: List[Tuple[str,
     for i, (section, a, can_fetch) in enumerate(articles):
         if can_fetch:
             body = fetch_article_body(a["link"], user_agent) or a.get("description") or ""
+            extra = ""
         else:
             body = "없음"
+            extra = f"RSS 요약: {a['description']}\n" if a.get("description") else ""
         blocks.append(
             f"<article id=\"{i}\" section=\"{section}\">\n언론사: {_source_name(source_names, a)}\n"
-            f"제목: {a['title']}\n본문:\n{body}\n</article>"
+            f"제목: {a['title']}\n{extra}본문:\n{body}\n</article>"
         )
     if not blocks:
         return {}
@@ -325,7 +356,9 @@ def format_section(digest_name: str, section_title: str, overview: str, summariz
         part = f"<b>{n}. [{html.escape(_source_name(source_names, a))}] {_title_link(a)}</b>"
         if a.get("summary"):
             part += f"\n{_render_summary(a['summary'])}"
-        if a.get("basis") and a["basis"] != "본문":
+        if a.get("basis") == "제목":
+            part += " <i>(제목 기반 추정)</i>"
+        elif a.get("basis") and a["basis"] != "본문":
             part += f" <i>({html.escape(a['basis'])} 참고)</i>"
         parts.append((part, "\n\n"))
 
@@ -369,7 +402,8 @@ def build_digest(llm: LLMClient, digest_conf: Dict, candidates: List[Dict], sour
         exclude_url_patterns + digest_conf.get("exclude_url_patterns", []),
     )
     llm.reset_usage()
-    candidates = triage(llm, interests, perspective, candidates, source_names)
+    candidates = triage(llm, interests, perspective, candidates, source_names,
+                        digest_conf.get("triage_max", DEFAULT_TRIAGE_MAX))
     articles = score(llm, interests, perspective, candidates, source_names)
     if not articles:
         llm.log_usage(name)
@@ -379,24 +413,24 @@ def build_digest(llm: LLMClient, digest_conf: Dict, candidates: List[Dict], sour
     def can_fetch(a):
         return sources_conf[a["source_id"]].get("fetch_body", True)
 
-    # Without briefs, articles that can't be fetched have nothing to be summarized from.
-    to_summarize = [
-        (key, a, can_fetch(a)) for key, picked in sections.items() for a in picked
-        if can_fetch(a) or briefs
-    ]
+    # Articles that can't be fetched are summarized from briefs, or failing that from the title.
+    to_summarize = [(key, a, can_fetch(a)) for key, picked in sections.items() for a in picked]
     result = summarize_articles(llm, interests, to_summarize, source_names, user_agent, briefs)
     items = {item.get("id"): item for item in result.get("items", []) if isinstance(item, dict)}
     overviews = result.get("overview") or {}
     if not isinstance(overviews, dict):
         overviews = {}
 
-    # Fetchable articles are always listed with a summary; the rest only if a brief covered them.
+    # Articles left without a summary (e.g. the model returned none) fall back to the title-only list.
     summarized_by_section: Dict[str, List[Dict]] = {s["key"]: [] for s in SECTIONS}
     for i, (key, a, fetchable) in enumerate(to_summarize):
         item = items.get(i, {})
         summary = item.get("summary") or ""
+        basis = item.get("basis") or ""
+        if basis not in ("본문", "제목") and basis not in briefs:
+            basis = "본문" if fetchable else "제목"
         if fetchable or summary:
-            summarized_by_section[key].append({**a, "summary": summary, "basis": item.get("basis") or ""})
+            summarized_by_section[key].append({**a, "summary": summary, "basis": basis})
     summarized_links = {a["link"] for picked in summarized_by_section.values() for a in picked}
 
     messages, links = [], []
