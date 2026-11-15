@@ -27,6 +27,12 @@ llm:
     digest_model: "gemini-flash-latest"
 
 digest:
+  # 다이제스트를 키워드 알림과 다른 채팅방(또는 다른 봇)으로 보낼 때 지정. 생략한 항목은 위 telegram 설정을 따름.
+  # 다이제스트별로 chat_id 를 다시 지정할 수도 있음 (digests 항목의 chat_id).
+  # telegram:
+  #   chat_id: "-100xxxxxxxxxx"
+  #   bot_token: "..."
+
   # 수집 대상 언론사.
   #   type: rss        -> url 의 피드를 읽음
   #   type: html_list  -> urls 페이지에서 href 에 link_pattern 이 포함된 링크를 기사로 수집

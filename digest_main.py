@@ -33,7 +33,9 @@ async def send(config: dict, dry_run: bool = False):
     digest_conf = config["digest"]
     sources_conf = digest_conf["sources"]
     user_agent = digest_conf.get("user_agent", DEFAULT_USER_AGENT)
-    telegram_conf = config["telegram"]
+    # digest.telegram overrides the top-level telegram settings (e.g. to post to a separate chat);
+    # a digest entry may override chat_id once more.
+    telegram_conf = {**config["telegram"], **(digest_conf.get("telegram") or {})}
     llm = LLMClient(config["llm"])
     briefs_conf = digest_conf.get("briefs") or {}
     brief_cache = {}
@@ -78,7 +80,8 @@ async def send(config: dict, dry_run: bool = False):
             print("\n\n----- 8< -----\n\n".join(messages))
             continue
 
-        if await notifier.send_messages(telegram_conf["bot_token"], telegram_conf["chat_id"], messages):
+        chat_id = entry.get("chat_id", telegram_conf["chat_id"])
+        if await notifier.send_messages(telegram_conf["bot_token"], chat_id, messages):
             digest_store.mark_sent(name, links)
             logger.info(f"Digest '{name}' sent ({len(links)} articles).")
 
