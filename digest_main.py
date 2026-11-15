@@ -2,7 +2,7 @@
 Daily LLM news digest.
 
     python digest_main.py collect   # run hourly: gather titles from RSS feeds / list pages
-    python digest_main.py send      # run daily at 18:00 KST: screen, summarize, send to Telegram
+    python digest_main.py send      # run daily at 16:00 KST: screen, summarize, send to Telegram
 """
 import argparse
 import asyncio
