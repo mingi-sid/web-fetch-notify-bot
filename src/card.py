@@ -135,3 +135,87 @@ def wrap_text(draw: ImageDraw.ImageDraw, text: str, font, width: int, max_lines:
             last = last[:-1]
         lines[-1] = last.rstrip() + ELLIPSIS
     return lines
+
+
+# --- rendering --------------------------------------------------------------
+
+SIZE = 1080
+PAD = 64
+COLORS = {
+    "surface": "#121005", "ink1": "#f3f2e9", "ink2": "#d3d1c6",
+    "muted": "#adab9f", "rule": "#4f4d41", "key": "#FFED00",
+}
+
+
+@dataclass
+class CardStyle:
+    font_bold: str
+    font_regular: str
+    show_description: bool = True
+
+
+def fetch_image(url: Optional[str]) -> Optional[Image.Image]:
+    if not url:
+        return None
+    response = _get(url, DEFAULT_USER_AGENT)
+    if response is None:
+        return None
+    try:
+        return Image.open(io.BytesIO(response.content)).convert("RGB")
+    except Exception as e:
+        logger.warning(f"Not an image: {url} ({e})")
+        return None
+
+
+def _cover(photo: Image.Image, w: int, h: int) -> Image.Image:
+    """Scale to cover w×h, center horizontally, keep the top (faces, not captions)."""
+    r = max(w / photo.width, h / photo.height)
+    photo = photo.resize((max(w, round(photo.width * r)), max(h, round(photo.height * r))), Image.LANCZOS)
+    left = (photo.width - w) // 2
+    return photo.crop((left, 0, left + w, h))
+
+
+def render_card(meta: ArticleMeta, image: Optional[Image.Image], style: CardStyle) -> Image.Image:
+    img = Image.new("RGB", (SIZE, SIZE), COLORS["surface"])
+    d = ImageDraw.Draw(img)
+    width = SIZE - 2 * PAD
+    footer_y = SIZE - PAD - 60
+
+    if image is not None:
+        title_font, title_lines, title_lh = ImageFont.truetype(style.font_bold, 54), 3, 70
+    else:
+        title_font, title_lines, title_lh = ImageFont.truetype(style.font_bold, 72), 6, 92
+    desc_font = ImageFont.truetype(style.font_regular, 30)
+    small = ImageFont.truetype(style.font_regular, 24)
+
+    y = PAD
+    d.rectangle((PAD, y, PAD + 72, y + 8), fill=COLORS["key"])
+    y += 32
+    for line in wrap_text(d, meta.title, title_font, width, title_lines):
+        d.text((PAD, y), line, font=title_font, fill=COLORS["ink1"])
+        y += title_lh
+    if style.show_description and meta.description:
+        y += 8
+        for line in wrap_text(d, meta.description, desc_font, width, 2):
+            d.text((PAD, y), line, font=desc_font, fill=COLORS["ink2"])
+            y += 44
+    y += 28
+
+    photo_h = footer_y - 24 - y
+    if image is not None and photo_h > 80:
+        img.paste(_cover(image, width, photo_h), (PAD, y))
+
+    d.line((PAD, footer_y, SIZE - PAD, footer_y), fill=COLORS["rule"], width=2)
+    d.text((PAD, footer_y + 18), f"출처: {meta.source}", font=small, fill=COLORS["ink2"])
+    short_url = meta.url.split("://", 1)[-1].removeprefix("www.")
+    d.text((PAD, footer_y + 50), wrap_text(d, short_url, small, width, 1)[0], font=small, fill=COLORS["muted"])
+    return img
+
+
+def make_card_png(url: str, style: CardStyle) -> Optional[bytes]:
+    meta = fetch_meta(url)
+    if meta is None or not meta.title:
+        return None
+    buf = io.BytesIO()
+    render_card(meta, fetch_image(meta.image_url), style).save(buf, "PNG")
+    return buf.getvalue()

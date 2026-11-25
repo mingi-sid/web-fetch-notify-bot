@@ -80,3 +80,38 @@ def test_wrap_long_token():
     lines = wrap_text(d, "가" * 200, f, 400, 3)
     _check_lines(lines, f, 400, 3)
     assert len(lines) == 3 and lines[-1].endswith("…")
+
+
+# --- rendering --------------------------------------------------------------
+
+from src.card import ArticleMeta, CardStyle, render_card  # noqa: E402
+
+FONT_R = "/usr/share/fonts/truetype/nanum/NanumSquare_acR.ttf"
+META = ArticleMeta("유성구, CES 2026서 미래 행정 해법 찾는다", "유성구가 기술을 접목한다.",
+                   None, "충청매일", "https://www.ccdn.co.kr/news/1")
+
+
+def _style(show=True):
+    _font()
+    return CardStyle(font_bold=FONT_B, font_regular=FONT_R, show_description=show)
+
+
+def test_render_size_and_key_bar():
+    img = render_card(META, Image.new("RGB", (800, 600), "#336699"), _style())
+    assert img.size == (1080, 1080)
+    assert img.getpixel((74, 68)) == (0xFF, 0xED, 0x00)
+
+
+def test_render_without_image():
+    img = render_card(META, None, _style())
+    assert img.size == (1080, 1080)
+    # no photo: nothing blue anywhere, card still renders
+    assert (0x33, 0x66, 0x99) not in set(img.getdata())
+
+
+def test_render_hides_description():
+    with_desc = render_card(META, None, _style(True))
+    without = render_card(META, None, _style(False))
+    # description color #d3d1c6 appears only when shown (footer uses it too, so compare counts)
+    count = lambda im: list(im.getdata()).count((0xD3, 0xD1, 0xC6))
+    assert count(with_desc) > count(without)
