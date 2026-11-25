@@ -106,12 +106,12 @@ def test_render_without_image():
     img = render_card(META, None, _style())
     assert img.size == (1080, 1080)
     # no photo: nothing blue anywhere, card still renders
-    assert (0x33, 0x66, 0x99) not in set(img.getdata())
+    assert (0x33, 0x66, 0x99) not in set(img.get_flattened_data())
 
 
 def test_render_hides_description():
     with_desc = render_card(META, None, _style(True))
     without = render_card(META, None, _style(False))
     # description color #d3d1c6 appears only when shown (footer uses it too, so compare counts)
-    count = lambda im: list(im.getdata()).count((0xD3, 0xD1, 0xC6))
+    count = lambda im: list(im.get_flattened_data()).count((0xD3, 0xD1, 0xC6))
     assert count(with_desc) > count(without)

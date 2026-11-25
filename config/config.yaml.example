@@ -115,3 +115,13 @@ digest:
       triage_max: 80
       triage_hint: "대전시·구의 예산, 시정, 의회 기사는 관심사와 직접 관련이 없어도 남긴다. 대전 외 충청권 시군의 행사·동정은 제외한다."
       max_articles: 10
+
+# --- 공유 카드 봇 (card_bot.py) ---
+# 기사 URL을 보내면 1080x1080 공유 카드 이미지로 답장. long polling으로 상주 실행.
+
+card:
+  # bot_token: "..."              # 생략하면 telegram.bot_token 사용 (같은 토큰을 다른 프로세스가 polling 중이면 안 됨)
+  allowed_chat_ids: []             # 응답할 채팅 ID 목록. 비어 있으면 아무에게도 응답하지 않음
+  show_description: true           # 요약문(기사 소개 문구) 표시 여부
+  font_bold: "/usr/share/fonts/truetype/nanum/NanumSquareB.ttf"
+  font_regular: "/usr/share/fonts/truetype/nanum/NanumSquare_acR.ttf"

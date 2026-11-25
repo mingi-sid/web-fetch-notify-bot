@@ -129,3 +129,11 @@ cron 설정 예시는 `run_digest.sh` 하단을 참고하세요. cron은 서버 
 ## 개발 노트
 
 > 이 프로젝트의 일부 코드는 **Google Gemini Code Assist**의 도움을 받아 작성되었습니다.
+
+## 공유 카드 봇 (card_bot.py)
+
+텔레그램으로 봇에 기사 URL을 보내면 대표 이미지·제목·요약문·출처·URL을 담은 1080×1080 정사각 카드 이미지를 답장합니다. LLM은 쓰지 않고 기사 페이지의 메타 태그(og:title 등)만 사용합니다.
+
+- 설정: `config.yaml`의 `card:` 항목(`config.yaml.example` 참고). `allowed_chat_ids`에 본인 채팅 ID를 넣어야 응답합니다.
+- 폰트: 기본값은 나눔스퀘어(`sudo apt install fonts-nanum`). 다른 폰트는 `font_bold`, `font_regular`에 경로 지정.
+- 실행: `./run_card_bot.sh` (계속 실행됨). 서버 상주는 `run_card_bot.sh` 하단의 systemd 예시 참고.
