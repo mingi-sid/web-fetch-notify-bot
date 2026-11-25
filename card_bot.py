@@ -73,7 +73,7 @@ def build_app(config: dict) -> Application:
                 await update.effective_message.reply_photo(photo=png, caption=url)
 
     app = Application.builder().token(token).build()
-    app.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, on_message))
+    app.add_handler(MessageHandler(filters.UpdateType.MESSAGE & (filters.TEXT | filters.CAPTION) & ~filters.COMMAND, on_message))
     return app
 
 
@@ -82,7 +82,7 @@ def main() -> None:
         config = yaml.safe_load(f)
     logger.add(os.path.join(PROJECT_ROOT, "card_bot.log"), rotation="5 MB", retention=3)
     logger.info("Card bot starting (long polling)")
-    build_app(config).run_polling(allowed_updates=Update.ALL_TYPES)
+    build_app(config).run_polling(allowed_updates=[Update.MESSAGE])
 
 
 if __name__ == "__main__":

@@ -12,9 +12,12 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from loguru import logger
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from src.sources import DEFAULT_USER_AGENT, _get
+import charset_normalizer
+import requests
+
+from src.sources import DEFAULT_USER_AGENT
 
 ELLIPSIS = "…"
 SENTENCE_END = ".!?…\"'”’"
@@ -64,13 +67,47 @@ def parse_meta(html: str, url: str) -> ArticleMeta:
     )
 
 
+MAX_HTML_BYTES = 3 * 1024 * 1024
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+MAX_IMAGE_SIDE = 2160
+Image.MAX_IMAGE_PIXELS = 50_000_000  # the server has ~1GB RAM
+
+
+def _read_capped(response, limit: int) -> Optional[bytes]:
+    """Reads a streamed response, giving up (None) past `limit` bytes."""
+    chunks, total = [], 0
+    for chunk in response.iter_content(64 * 1024):
+        total += len(chunk)
+        if total > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _download(url: str, limit: int):
+    try:
+        response = requests.get(url, headers={"User-Agent": DEFAULT_USER_AGENT}, timeout=15, stream=True)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Request failed for {url}: {e}")
+        return None, None
+    with response:
+        body = _read_capped(response, limit)
+    if body is None:
+        logger.warning(f"Too large (> {limit} bytes): {url}")
+    return response, body
+
+
 def fetch_meta(url: str) -> Optional[ArticleMeta]:
-    response = _get(url, DEFAULT_USER_AGENT)
-    if response is None:
+    response, body = _download(url, MAX_HTML_BYTES)
+    if body is None:
         return None
-    if response.encoding in (None, "ISO-8859-1"):
-        response.encoding = response.apparent_encoding
-    return parse_meta(response.text, response.url)
+    encoding = response.encoding
+    if encoding in (None, "ISO-8859-1"):
+        best = charset_normalizer.from_bytes(body).best()
+        encoding = best.encoding if best else None
+    html = body.decode(encoding or "utf-8", errors="replace")
+    return parse_meta(html, response.url)
 
 
 # --- text cleanup -----------------------------------------------------------
@@ -88,7 +125,8 @@ _BYLINE = re.compile(r"^\s*[\[(【][^\])】]{0,40}기자[^\])】]{0,20}[\])】]\
 def clean_description(desc: str) -> str:
     desc = _BYLINE.sub("", desc.strip())
     # "건수가,5년" -> "건수가, 5년"; leave decimals like "3.5" alone.
-    desc = re.sub(r"(?<!\d)([.,])(?=\S)|(?<=\d)([.,])(?=[^\s\d])",
+    # Skip: decimals "3.5", ellipses "...", abbreviations "U.S.", closing quotes/brackets.
+    desc = re.sub(r"(?<![.\dA-Za-z])([.,])(?=[^\s.,\"'”’)\]])|(?<=\d)([.,])(?=[^\s\d.,\"'”’)\]])",
                   lambda m: (m.group(1) or m.group(2)) + " ", desc)
     desc = re.sub(r"\s+", " ", desc).strip()
     if not desc or desc[-1] in SENTENCE_END:
@@ -157,14 +195,22 @@ class CardStyle:
 def fetch_image(url: Optional[str]) -> Optional[Image.Image]:
     if not url:
         return None
-    response = _get(url, DEFAULT_USER_AGENT)
-    if response is None:
+    _, body = _download(url, MAX_IMAGE_BYTES)
+    if body is None:
         return None
     try:
-        return Image.open(io.BytesIO(response.content)).convert("RGB")
+        return _load_image(body)
     except Exception as e:
         logger.warning(f"Not an image: {url} ({e})")
         return None
+
+
+def _load_image(data: bytes) -> Image.Image:
+    img = Image.open(io.BytesIO(data))
+    img.draft("RGB", (MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))  # JPEG: decode at reduced scale
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+    return img.convert("RGB")
 
 
 def _cover(photo: Image.Image, w: int, h: int) -> Image.Image:
@@ -206,14 +252,18 @@ def render_card(meta: ArticleMeta, image: Optional[Image.Image], style: CardStyl
         img.paste(_cover(image, width, photo_h), (PAD, y))
 
     d.line((PAD, footer_y, SIZE - PAD, footer_y), fill=COLORS["rule"], width=2)
-    d.text((PAD, footer_y + 18), f"출처: {meta.source}", font=small, fill=COLORS["ink2"])
+    d.text((PAD, footer_y + 18), wrap_text(d, f"출처: {meta.source}", small, width, 1)[0], font=small, fill=COLORS["ink2"])
     short_url = meta.url.split("://", 1)[-1].removeprefix("www.")
-    d.text((PAD, footer_y + 50), wrap_text(d, short_url, small, width, 1)[0], font=small, fill=COLORS["muted"])
+    url_line = wrap_text(d, short_url, small, width, 1)
+    if url_line:
+        d.text((PAD, footer_y + 50), url_line[0], font=small, fill=COLORS["muted"])
     return img
 
 
 def make_card_png(url: str, style: CardStyle) -> Optional[bytes]:
     meta = fetch_meta(url)
+    if meta is not None:  # bound wrap work on absurd metadata
+        meta.title, meta.description = meta.title[:300], meta.description[:600]
     if meta is None or not meta.title:
         return None
     buf = io.BytesIO()

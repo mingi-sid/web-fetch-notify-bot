@@ -115,3 +115,39 @@ def test_render_hides_description():
     # description color #d3d1c6 appears only when shown (footer uses it too, so compare counts)
     count = lambda im: list(im.get_flattened_data()).count((0xD3, 0xD1, 0xC6))
     assert count(with_desc) > count(without)
+
+
+# --- review fixes -----------------------------------------------------------
+
+def test_clean_description_keeps_ellipsis_quotes_abbrev():
+    assert clean_description("말했다... 그리고 끝났다.") == "말했다... 그리고 끝났다."
+    assert clean_description('"좋다." 그가 말했다.') == '"좋다." 그가 말했다.'
+    assert clean_description("U.S. 정부가 밝혔다.") == "U.S. 정부가 밝혔다."
+
+
+def test_read_capped_rejects_oversize():
+    from src.card import _read_capped
+
+    class Resp:
+        headers = {}
+        def iter_content(self, n):
+            for _ in range(5):
+                yield b"x" * 1000
+    assert _read_capped(Resp(), 4000) is None
+    assert len(_read_capped(Resp(), 10000)) == 5000
+
+
+def test_load_image_shrinks_large():
+    import io as _io
+    from src.card import _load_image
+    buf = _io.BytesIO()
+    Image.new("RGB", (6000, 4000), "red").save(buf, "JPEG")
+    img = _load_image(buf.getvalue())
+    assert max(img.size) <= 2160 and img.mode == "RGB"
+
+
+def test_render_long_source_stays_inside():
+    m = ArticleMeta("제목", "", None, "아주긴언론사이름" * 20, "https://x.com/a")
+    img = render_card(m, None, _style())
+    # rightmost padding column stays background
+    assert {img.getpixel((1080 - 30, y)) for y in range(970, 1002)} == {(0x12, 0x10, 0x05)}
