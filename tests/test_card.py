@@ -86,7 +86,7 @@ def test_wrap_long_token():
 
 from src.card import ArticleMeta, CardStyle, render_card  # noqa: E402
 
-FONT_R = "/usr/share/fonts/truetype/nanum/NanumSquare_acR.ttf"
+FONT_R = "/usr/share/fonts/truetype/nanum/NanumSquareR.ttf"
 META = ArticleMeta("유성구, CES 2026서 미래 행정 해법 찾는다", "유성구가 기술을 접목한다.",
                    None, "충청매일", "https://www.ccdn.co.kr/news/1")
 

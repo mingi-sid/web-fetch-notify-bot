@@ -47,7 +47,7 @@ def build_app(config: dict) -> Application:
     allowed = card_conf.get("allowed_chat_ids", [])
     style = CardStyle(
         font_bold=card_conf.get("font_bold", "/usr/share/fonts/truetype/nanum/NanumSquareB.ttf"),
-        font_regular=card_conf.get("font_regular", "/usr/share/fonts/truetype/nanum/NanumSquare_acR.ttf"),
+        font_regular=card_conf.get("font_regular", "/usr/share/fonts/truetype/nanum/NanumSquareR.ttf"),
         show_description=card_conf.get("show_description", True),
     )
     for path in (style.font_bold, style.font_regular):

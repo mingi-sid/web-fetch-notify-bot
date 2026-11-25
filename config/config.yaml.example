@@ -124,4 +124,4 @@ card:
   allowed_chat_ids: []             # 응답할 채팅 ID 목록. 비어 있으면 아무에게도 응답하지 않음
   show_description: true           # 요약문(기사 소개 문구) 표시 여부
   font_bold: "/usr/share/fonts/truetype/nanum/NanumSquareB.ttf"
-  font_regular: "/usr/share/fonts/truetype/nanum/NanumSquare_acR.ttf"
+  font_regular: "/usr/share/fonts/truetype/nanum/NanumSquareR.ttf"
