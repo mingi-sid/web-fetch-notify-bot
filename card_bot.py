@@ -35,7 +35,7 @@ def _message_urls(update: Update) -> List[str]:
     msg = update.effective_message
     text = msg.text or msg.caption or ""
     urls = extract_urls(text)
-    for entity in (msg.entities or []) + (msg.caption_entities or []):
+    for entity in (*(msg.entities or ()), *(msg.caption_entities or ())):
         if entity.type == "text_link" and entity.url and entity.url not in urls:
             urls.append(entity.url)
     return urls
