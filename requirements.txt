@@ -7,3 +7,4 @@ google-genai
 feedparser
 beautifulsoup4
 trafilatura
+Pillow
